@@ -1,0 +1,6 @@
+C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/mbl_static.dir
+C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/mbl_core.bin.dir
+C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/mbl_stage2.sys.dir
+C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/libmbl.a.dir
+C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/edit_cache.dir
+C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/rebuild_cache.dir

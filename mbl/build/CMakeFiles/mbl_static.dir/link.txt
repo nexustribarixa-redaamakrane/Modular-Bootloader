@@ -1,0 +1,2 @@
+C:\mingw64\bin\ar.exe qc libmbl_static.a CMakeFiles/mbl_static.dir/src/mbl_core.c.obj CMakeFiles/mbl_static.dir/src/mbl_framebuffer.c.obj CMakeFiles/mbl_static.dir/src/mbl_gui.c.obj CMakeFiles/mbl_static.dir/src/mbl_sutf_gui.c.obj CMakeFiles/mbl_static.dir/src/mbl_loader.c.obj CMakeFiles/mbl_static.dir/src/sutf_encode.c.obj CMakeFiles/mbl_static.dir/src/sutf_decode.c.obj CMakeFiles/mbl_static.dir/src/sucs_string.c.obj
+C:\mingw64\bin\ranlib.exe libmbl_static.a
