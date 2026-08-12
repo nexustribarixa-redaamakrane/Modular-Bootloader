@@ -1,6 +1,6 @@
-C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/mbl_static.dir
-C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/mbl_core.bin.dir
-C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/mbl_stage2.sys.dir
-C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/libmbl.a.dir
-C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/edit_cache.dir
-C:/Users/HIGH SKILLS/Documents/Modular Bootloader/mbl/build/CMakeFiles/rebuild_cache.dir
+C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/mbl_static.dir
+C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/libmbl.a.dir
+C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/mbl_core_bin.dir
+C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/mbl_stage2_sys.dir
+C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/edit_cache.dir
+C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/rebuild_cache.dir

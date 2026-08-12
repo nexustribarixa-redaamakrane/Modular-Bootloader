@@ -53,3 +53,54 @@ add_custom_command(
 add_custom_target(mbl_stage2_sys ALL
     DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage2.sys
 )
+
+# Optional Python3-based helpers (font extraction + disk image builder)
+find_package(Python3 COMPONENTS Interpreter)
+
+# Font table for stage3, extracted from the embedded 8x16 font in mbl_sutf_gui.c
+if(Python3_EXECUTABLE)
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/boot/font8x16.inc
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/extract_font.py
+                ${CMAKE_CURRENT_SOURCE_DIR}/src/mbl_sutf_gui.c
+                ${CMAKE_CURRENT_SOURCE_DIR}/boot/font8x16.inc
+        DEPENDS tools/extract_font.py src/mbl_sutf_gui.c
+        COMMENT "Generating boot/font8x16.inc"
+    )
+endif()
+
+# Custom Command: NASM Stage 3 Flat Binary (mbl_stage3.bin - boot GUI)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage3.bin
+    COMMAND nasm -f bin -I ${CMAKE_CURRENT_SOURCE_DIR}/boot ${CMAKE_CURRENT_SOURCE_DIR}/boot/stage3.asm -o ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage3.bin
+    DEPENDS boot/stage3.asm ${CMAKE_CURRENT_SOURCE_DIR}/boot/font8x16.inc
+    COMMENT "Assembling Stage 3 Boot GUI (mbl_stage3.bin)"
+)
+
+add_custom_target(mbl_stage3_bin ALL
+    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage3.bin
+)
+
+# Bootable disk image: packs stage1/stage2/stage3/kernel at the LBAs the
+# stage2 loader expects (see tools/build_image.py and boot/stage2.asm).
+if(Python3_EXECUTABLE)
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/mbl_disk.img
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/build_image.py
+                --stage1 ${CMAKE_CURRENT_BINARY_DIR}/mbl_core.bin
+                --stage2 ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage2.sys
+                --stage3 ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage3.bin
+                --out ${CMAKE_CURRENT_BINARY_DIR}/mbl_disk.img
+        DEPENDS
+            ${CMAKE_CURRENT_BINARY_DIR}/mbl_core.bin
+            ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage2.sys
+            ${CMAKE_CURRENT_BINARY_DIR}/mbl_stage3.bin
+            tools/build_image.py
+            boot/test_kernel.asm
+        COMMENT "Building bootable disk image (mbl_disk.img)"
+    )
+
+    add_custom_target(mbl_disk_img ALL
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mbl_disk.img
+    )
+endif()
