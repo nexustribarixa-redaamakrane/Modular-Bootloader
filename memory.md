@@ -15,6 +15,7 @@
 | Stage 1 MBR (`stage1.asm`) | DONE | 512B MBR, LBA+CHS fallback, publishes bootinfo at 0x500. |
 | Stage 2 loader (`stage2.asm`) | DONE | Loads 96-sector blob from LBA 16 to 0x80000. **Includes INT13h extension check + CHS fallback.** |
 | Boot blob (`bootimg.asm`) | DONE | A20 → GDT → PM → C entry. Contains `_rm_entry`, `_bios_tramp`, `_rm_boot`, BIOS call frame. **16-bit far-jump operand fix applied to bios_read & bios_boot.** |
+| Static Library (`libmbl.a`) | DONE | Standalone 32-bit static library archive for linking into OpenWindows kernel (23,256 B). |
 | Disk image builder (`build_image.py`) | DONE | Assembles all pieces, creates OWFS volume, writes `mbl_test.img`. |
 | OWFS filesystem (`owfs_mkfs.py`) | DONE | Creates OpenWindows FS volume with `kernel.bin` seed. |
 | Automated test (`test_qemu.py`) | DONE | Boots QEMU headless, checks VGA text buffer for menu title, sends keys, verifies kernel. (`parse_xp` supports 0x-prefixed monitor output). |

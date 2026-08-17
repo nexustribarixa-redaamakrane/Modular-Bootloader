@@ -305,7 +305,7 @@ def _scan_symbols(text):
             defined.add(_bare(m.group(1)))
     return globals_, defined
 
-def translate(text, file_token):
+def translate(text, file_token, standalone=False):
     globals_, defined = _scan_symbols(text)
     rw = Rewriter(file_token, globals_, defined)
     out = []
@@ -457,20 +457,42 @@ def translate(text, file_token):
         target.append(_transform_instruction(line, rw))
 
     flush_bss()
+    if standalone:
+        externs = set()
+        for line in out + bss:
+            l = line.strip()
+            if (l.startswith('section ') or l.startswith('global ') or
+                l.startswith('align') or l.startswith('times ') or
+                l.startswith('db ') or l.startswith('dw ') or
+                l.startswith('dd ') or l.startswith('dq ') or
+                l.startswith('resb ') or l.startswith('resw ') or
+                l.startswith('resd ') or l.startswith('resq ')):
+                continue
+            for tok in _IDENT_RE.findall(l):
+                if (tok not in REGISTERS and tok not in KEYWORDS and
+                    tok not in globals_ and tok not in defined and
+                    not tok.startswith(file_token) and not _is_number(tok) and
+                    not tok.startswith('.')):
+                    externs.add(tok)
+        header = ['BITS 32'] + ['extern %s' % e for e in sorted(externs)] + ['']
+        return '\n'.join(header + out) + '\n'
     return '\n'.join(out) + '\n'
 
 def main(argv):
-    if len(argv) != 3:
-        print('usage: gcc_intel_to_nasm.py <input.s> <output.asm>')
+    standalone = False
+    args = list(argv[1:])
+    if '--obj' in args:
+        standalone = True
+        args.remove('--obj')
+    if len(args) != 2:
+        print('usage: gcc_intel_to_nasm.py [--obj] <input.s> <output.asm>')
         return 1
-    src, dst = argv[1], argv[2]
+    src, dst = args[0], args[1]
     with open(src, 'r', encoding='utf-8', errors='replace') as f:
         text = f.read()
     base = os.path.splitext(os.path.basename(src))[0]
-    token = '_f%s_' % _next_file_id()
-    # keep the token stable and readable: use file name
     token = '_f' + re.sub(r'[^A-Za-z0-9]', '_', base) + '_'
-    result = translate(text, token)
+    result = translate(text, token, standalone=standalone)
     with open(dst, 'w', encoding='utf-8', newline='\n') as f:
         f.write(result)
     return 0

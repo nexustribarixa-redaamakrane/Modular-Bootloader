@@ -88,10 +88,12 @@ def build_c_modules():
 def build_static_lib():
     obj_files = []
     for rel in SRCS:
-        src = os.path.join(ROOT, "src", rel)
         base = os.path.basename(rel).replace(".c", "")
+        s_file = os.path.join(BUILD, base + ".s")
+        obj_asm = os.path.join(BUILD, base + ".obj.asm")
         obj_file = os.path.join(BUILD, base + ".o")
-        run([GCC, *CFLAGS_OBJ, "-o", obj_file, src])
+        run([PY, os.path.join(TOOLS, "gcc_intel_to_nasm.py"), "--obj", s_file, obj_asm])
+        run([NASM, "-f", "elf32", "-o", obj_file, obj_asm])
         obj_files.append(obj_file)
     lib_file = os.path.join(BUILD, "libmbl.a")
     run([AR, "rcs", lib_file, *obj_files])

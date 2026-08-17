@@ -106,9 +106,10 @@ python tools/build_image.py
 This pipeline automatically:
 1. Compiles C sources (`src/*.c`) to Intel-syntax assembly (`-m32 -S -masm=intel`).
 2. Translates assembly to NASM format via `tools/gcc_intel_to_nasm.py`.
-3. Assembles `boot/stage1.asm`, `boot/stage2.asm`, `boot/bootimg.asm`, and `boot/test_kernel.asm` with NASM.
-4. Formats the OWFS partition using `tools/owfs_mkfs.py` and seeds `kernel.bin`.
-5. Emits the bootable raw disk image `mbl_test.img`.
+3. Assembles standalone ELF32 object files and creates the static library **`build/libmbl.a`** via `ar rcs` (for linking directly into the OpenWindows kernel or other targets).
+4. Assembles `boot/stage1.asm`, `boot/stage2.asm`, `boot/bootimg.asm`, and `boot/test_kernel.asm` with NASM.
+5. Formats the OWFS partition using `tools/owfs_mkfs.py` and seeds `kernel.bin`.
+6. Emits the bootable raw disk image `mbl_test.img`.
 
 ### Run Automated QEMU Test
 
