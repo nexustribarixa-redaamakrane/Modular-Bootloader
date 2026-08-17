@@ -1,6 +1,0 @@
-C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/mbl_static.dir
-C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/libmbl.a.dir
-C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/mbl_core_bin.dir
-C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/mbl_stage2_sys.dir
-C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/edit_cache.dir
-C:/Users/KARIMABENDA/Documents/Modular-Bootloader/build/CMakeFiles/rebuild_cache.dir

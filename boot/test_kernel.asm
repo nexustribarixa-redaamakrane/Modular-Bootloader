@@ -1,73 +1,120 @@
 ;=============================================================================
-; MBL Test Kernel - end-to-end boot chain verification.
-; NASM flat binary, ORG 0x100000. Entered by stage3 handoff exactly like a
-; real kernel:
-;       push dword <state_ptr>; call 0x100000
-;   so [esp + 4] = mbl_boot_state_t*.
+; MBL Test Kernel - a tiny flat 32-bit program loaded to 0x200000.
+; Prints the boot configuration passed by the bootloader and halts.
 ;
-; Fills the framebuffer dark violet and draws a neon-cyan midline, proving
-; that stage1 -> stage2 (VBE + disk) -> stage3 (GUI) -> handoff all worked,
-; then halts. Replace this file / pass --kernel to build_image.py to boot a
-; real kernel image.
+; cdecl handoff:  kernel(mbl_boot_config_t *cfg)  [cfg on the stack]
+;   mbl_boot_config_t: +0 magic, +4 boot_drive, +8 kernel_size,
+;                      +12 sucs_cfg.active_mode
 ;=============================================================================
+
 BITS 32
-ORG 0x100000
+ORG 0x200000
 
-_start:
-    mov eax, [esp + 4]
-    test eax, eax
-    jz .halt
-    mov ebx, [eax + 0]              ; state->framebuffer
-    test ebx, ebx
-    jz .halt
-    mov edi, [ebx + 0]              ; fb->pixels
-    test edi, edi
-    jz .halt
-    mov ecx, [ebx + 8]              ; fb->width
-    mov edx, [ebx + 12]             ; fb->height
-    mov esi, [ebx + 16]             ; fb->pitch (bytes)
+%define VGA       0xB8000
+%define ATTR      0x07
 
-    mov [k_pixels], edi
-    mov [k_pitch], esi
-    mov [k_width], ecx
-    mov eax, edx
-    mov [k_height], eax
-    shr eax, 1
-    mov [k_half], eax
+start:
+    cli
+    mov ebp, esp
+    mov eax, [ebp + 4]           ; cfg pointer
+    mov [cfg_ptr], eax
 
-    ; ---- fill every row with the dark violet theme background ----
-    mov ebp, [k_pixels]             ; current row base
-    mov ebx, [k_height]             ; rows remaining
-.fill_loop:
-    test ebx, ebx
-    jz .line
-    mov edi, ebp
-    mov ecx, [k_width]
-    mov eax, 0xFF0F0C20
-    cld
-    rep stosd
-    add ebp, [k_pitch]
-    dec ebx
-    jmp .fill_loop
+    ; own segments and stack (well above the bootloader's 0x90000 area)
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov esp, 0x180000
 
-    ; ---- neon-cyan midline at height/2 ----
-.line:
-    mov eax, [k_half]
-    imul eax, [k_pitch]
-    add eax, [k_pixels]
-    mov edi, eax
-    mov ecx, [k_width]
-    mov eax, 0xFF00E5FF
-    rep stosd
+    ; clear screen
+    mov edi, VGA
+    mov ecx, 80 * 25
+    mov eax, 0x0720
+    rep stosw
+
+    ; banner
+    mov edi, VGA + 1 * 160 + 14 * 2
+    mov esi, msg_banner
+    call putstr
+
+    ; boot drive
+    mov eax, [cfg_ptr]
+    movzx eax, byte [eax + 4]
+    mov edi, VGA + 3 * 160 + 14 * 2
+    mov esi, msg_drive
+    call putstr
+    call puthex32
+
+    ; kernel size
+    mov eax, [cfg_ptr]
+    mov eax, [eax + 8]
+    mov edi, VGA + 4 * 160 + 14 * 2
+    mov esi, msg_size
+    call putstr
+    call puthex32
+
+    ; SUCS active mode (SuperUnicode boot config)
+    mov eax, [cfg_ptr]
+    mov eax, [eax + 12]
+    mov edi, VGA + 5 * 160 + 14 * 2
+    mov esi, msg_sucs
+    call putstr
+    call puthex32
+
+    ; magic
+    mov eax, [cfg_ptr]
+    mov eax, [eax]
+    mov edi, VGA + 6 * 160 + 14 * 2
+    mov esi, msg_magic
+    call putstr
+    call puthex32
 
 .halt:
     cli
     hlt
     jmp .halt
 
+;------------------------------------------------------------------------------
+; putstr - print null-terminated string at [edi]
+;------------------------------------------------------------------------------
+putstr:
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    mov ah, ATTR
+    mov [edi], ax
+    add edi, 2
+    jmp .loop
+.done:
+    ret
+
+;------------------------------------------------------------------------------
+; puthex32 - print eax as 8 uppercase hex digits at [edi]
+;------------------------------------------------------------------------------
+puthex32:
+    mov ecx, 8
+.loop:
+    rol eax, 4
+    mov edx, eax
+    and edx, 0x0F
+    cmp dl, 10
+    jb .num
+    add dl, 'A' - 10
+    jmp .put
+.num:
+    add dl, '0'
+.put:
+    mov dh, ATTR
+    mov [edi], dx
+    add edi, 2
+    loop .loop
+    ret
+
 section .data
-k_pixels: dd 0
-k_pitch:  dd 0
-k_width:  dd 0
-k_height: dd 0
-k_half:   dd 0
+cfg_ptr:    dd 0
+msg_banner: db "MBL TEST KERNEL", 0
+msg_drive:  db "boot drive : 0x", 0
+msg_size:   db "kernel size: 0x", 0
+msg_sucs:   db "SUCS mode  : 0x", 0
+msg_magic:  db "config magic:0x", 0
