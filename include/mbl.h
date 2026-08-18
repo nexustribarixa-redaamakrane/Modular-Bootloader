@@ -136,7 +136,7 @@ void vga_fill(uint8_t row, uint8_t col, uint8_t ch, uint8_t n, uint8_t attr);
 int kbd_poll(void);     /* 0 if no event, else menu action code */
 int kbd_wait(void);     /* blocking variant */
 void kbd_reboot(void);
-uint8_t cmos_read(uint8_t reg);
+uint8_t rtc_get_seconds(void);
 
 /* Menu action codes */
 enum {

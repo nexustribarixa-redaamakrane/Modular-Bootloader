@@ -10,9 +10,9 @@
 
 | Component | Status | Notes |
 | :--- | :--- | :--- |
-| UEFI Entry (`efi_entry.c`) | DONE | `EfiMain` initializes UEFI globals (`gST`, `gBS`, `gRT`, `gImageHandle`), locates GOP (highest resolution), Block I/O (fixed disk), ConIn/ConOut, and Loaded Image Protocol. |
+| UEFI Entry (`efi_entry.c`) | DONE | `EfiMain` initializes UEFI globals (`gST`, `gBS`, `gRT`, `gImageHandle`), locates GOP (selects highest resolution from first working handle), Block I/O (fixed disk), ConIn/ConOut, and Loaded Image Protocol. |
 | GOP Framebuffer Renderer (`gop.c`) | DONE | Renders 8x16 CP437 bitmap font glyphs into linear framebuffer (`PixelBlueGreenRedReserved8BitPerColor` and `PixelRedGreenBlueReserved8BitPerColor`), matching `vga_*` API. |
-| UEFI Keyboard & RTC (`kbd.c`) | DONE | `EFI_SIMPLE_TEXT_INPUT_PROTOCOL` key polling (ScanCode / UnicodeChar) and `GetTime` for seconds / RTC timeout. |
+| UEFI Keyboard & RTC (`kbd.c`) | DONE | `EFI_SIMPLE_TEXT_INPUT_PROTOCOL` key polling (ScanCode / UnicodeChar) and `rtc_get_seconds()` for RTC timeout via `GetTime`. |
 | UEFI Block I/O Driver (`bios_disk.c`) | DONE | `EFI_BLOCK_IO_PROTOCOL->ReadBlocks` for sector reads, `disk_read_block` reads from `OWFS_PARTITION_LBA` (131200). |
 | OWFS Filesystem Driver (`owfs.c`) | DONE | Read-only volume probe, superblock / catalog / inode CRC32c verification, block mapping (direct + indirect), and file streaming. |
 | GRUB-style Menu (`menu.c`) | DONE | 80x25 text layout on GOP framebuffer with countdown timer, keyboard navigation, reboot, and shutdown. |
@@ -62,7 +62,7 @@ python tools/test_qemu.py
 
 ## 3. Disk Image Layout (`mbl_test.img`)
 
-Total Size: 96 MiB (198,656 sectors @ 512 B/sector)
+Total Size: 96 MiB (196,608 sectors @ 512 B/sector)
 
 | LBA Sector | Byte Offset | Size | Content |
 | :--- | :--- | :--- | :--- |
@@ -87,7 +87,7 @@ Total Size: 96 MiB (198,656 sectors @ 512 B/sector)
 
 | Address / Range | Size | Component / Purpose |
 | :--- | :--- | :--- |
-| `0x00000510` | 24 B | Boot configuration block (`mbl_boot_config_t`) passed to kernel |
+| `0x00000510` | 28 B | Boot configuration block (`mbl_boot_config_t`) passed to kernel |
 | `0x00030000` | 4 KiB | OWFS file staging block buffer (`MBL_FS_BUF`) |
 | `0x00180000` | — | Initial 32-bit stack top for kernel execution |
 | `0x00200000` | Variable | Target kernel load address (`MBL_KERNEL_ADDR`, up to 16 MiB) |
@@ -112,7 +112,7 @@ typedef struct {
 ### Protocol Usage
 1. **EFI Graphics Output Protocol (`EFI_GRAPHICS_OUTPUT_PROTOCOL`)**
    - Discovered in `efi_entry.c` via `LocateHandleBuffer`.
-   - Highest available resolution mode selected automatically.
+   - Highest available resolution mode selected automatically (from the first working GOP handle).
    - `gop.c` maps character cells into glyph pixel coordinates using an 8x16 font table.
 2. **EFI Block I/O Protocol (`EFI_BLOCK_IO_PROTOCOL`)**
    - Discovered in `efi_entry.c` (filters for non-removable, media-present block device).
@@ -140,7 +140,7 @@ typedef struct {
 | `include/sutf/sucs_mode.h` | SuperUnicode mode definitions (`SUCS_MODE_BASE`, `SUCS_MODE_EXTENDED`) |
 | `src/efi_entry.c` | UEFI entry point (`EfiMain`), locates GOP, Block I/O, ConIn, ConOut |
 | `src/gop.c` | GOP framebuffer text-mode emulation layer (implements `vga_*` API) |
-| `src/kbd.c` | UEFI keyboard polling and `GetTime` RTC wrapper |
+| `src/kbd.c` | UEFI keyboard polling and `rtc_get_seconds()` RTC wrapper |
 | `src/bios_disk.c` | Block I/O read wrappers for sector and OWFS block access |
 | `src/owfs.c` | Read-only OpenWindows File System driver |
 | `src/menu.c` | GRUB-style text menu rendering and input handling |

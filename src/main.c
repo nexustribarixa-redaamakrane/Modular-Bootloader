@@ -16,9 +16,6 @@ static mbl_entry_t g_entries[MBL_MENU_MAX];
 /* Forward declaration: init GOP renderer (defined in gop.c) */
 extern void vga_init_gop(void);
 
-/* Forward: get current RTC seconds via UEFI GetTime */
-extern uint8_t efi_get_seconds(void);
-
 static void fail(const char *msg) {
     vga_fill(12, 20, ' ', 40, 0x0Fu);
     vga_write(12, 20, msg, 0x0Fu);

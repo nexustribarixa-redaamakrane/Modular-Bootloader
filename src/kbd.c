@@ -84,9 +84,8 @@ void kbd_reboot(void)
  * RTC (replaces CMOS port I/O)
  * ============================================================================ */
 
-uint8_t cmos_read(uint8_t reg)
+uint8_t rtc_get_seconds(void)
 {
-    (void)reg;
     return efi_get_seconds();
 }
 

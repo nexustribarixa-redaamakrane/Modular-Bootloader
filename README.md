@@ -24,7 +24,7 @@ MBL is a 64-bit UEFI application (`BOOTX64.EFI`) featuring a GRUB-style text-mod
    +---------------------------------+---------------------------------+
    | UEFI Application Entry (src/efi_entry.c: EfiMain)                 |
    | - Stores EFI System Table, Boot Services, and Runtime Services    |
-   | - Locates Graphics Output Protocol (GOP) & selects best mode      |
+   | - Locates Graphics Output Protocol (GOP) & selects highest resolution mode     |
    | - Locates Block I/O Protocol for the root fixed storage drive     |
    | - Initializes ConIn / ConOut and calls kmain()                    |
    +---------------------------------+---------------------------------+
@@ -67,7 +67,7 @@ MBL is a 64-bit UEFI application (`BOOTX64.EFI`) featuring a GRUB-style text-mod
 
 | Address Range | Size | Usage |
 | :--- | :--- | :--- |
-| `0x00000510 - 0x00000527` | 24 B | Boot configuration block (`mbl_boot_config_t`) |
+| `0x00000510 - 0x0000052B` | 28 B | Boot configuration block (`mbl_boot_config_t`) |
 | `0x00030000 - 0x00030FFF` | 4 KiB | OWFS staging buffer (`MBL_FS_BUF`) |
 | `0x00180000` | — | Initial 32-bit stack pointer for kernel handoff |
 | `0x00200000+` | Variable | Target kernel load address (`MBL_KERNEL_ADDR`, up to 16 MiB) |
@@ -77,7 +77,7 @@ MBL is a 64-bit UEFI application (`BOOTX64.EFI`) featuring a GRUB-style text-mod
 
 ## Disk Image Layout (`mbl_test.img`)
 
-Total Size: 96 MiB (198,656 sectors @ 512 B/sector)
+Total Size: 96 MiB (196,608 sectors @ 512 B/sector)
 
 | LBA Sector | Byte Offset | Size | Content |
 | :--- | :--- | :--- | :--- |
@@ -86,6 +86,7 @@ Total Size: 96 MiB (198,656 sectors @ 512 B/sector)
 | **2 .. 33** | `0x000400` | 16 KiB | Primary GPT Partition Table (128 entries) |
 | **128 .. 131199** | `0x010000` | 64 MiB | **Partition 1: FAT32 EFI System Partition (ESP)** (`\EFI\BOOT\BOOTX64.EFI`) |
 | **131200 .. 196735** | `0x4010000` | 32 MiB | **Partition 2: OpenWindows OWFS Data Partition** (`kernel.bin`) |
+| **196736 .. 198622** | `0x6010000` | ~943 KiB | Unallocated / alignment space |
 | **198623 .. 198654** | `0x60EFE00` | 16 KiB | Backup GPT Partition Table (128 entries) |
 | **198655** | `0x60FFE00` | 512 B | Backup GPT Header |
 

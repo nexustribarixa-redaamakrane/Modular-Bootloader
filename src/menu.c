@@ -191,7 +191,7 @@ int menu_run(const mbl_entry_t *entries, int count, int timeout_secs) {
     int sel = 0;
     int top = 0;
     int need_redraw = 1;
-    uint8_t last_sec = cmos_read(0);
+    uint8_t last_sec = rtc_get_seconds();
     int remaining = timeout_secs;
 
     draw_frame("Modular Bootloader", "OpenWindows OWFS boot manager");
@@ -230,7 +230,7 @@ int menu_run(const mbl_entry_t *entries, int count, int timeout_secs) {
         }
 
         if (timeout_secs > 0) {
-            uint8_t now = cmos_read(0);
+            uint8_t now = rtc_get_seconds();
             if (now != last_sec) {
                 int delta = (now >= last_sec) ? ((int)now - (int)last_sec)
                                               : ((int)now + 60 - (int)last_sec);
