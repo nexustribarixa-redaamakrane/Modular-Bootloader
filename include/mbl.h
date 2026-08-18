@@ -7,25 +7,16 @@
 #include <sutf/sucs_mode.h>
 
 /* =========================================================================
- * Fixed RAM map (must match boot/bootimg.asm and tools/build_image.py)
+ * Fixed RAM map
  * ========================================================================= */
-#define MBL_BOOTINFO       0x00000500u   /* mbl_bootinfo_t (written by stage1/2) */
-#define MBL_BOOTCONFIG     0x00000510u   /* mbl_boot_config_t (kernel handoff) */
 #define MBL_FS_BUF         0x00030000u   /* 4 KiB OWFS block staging buffer */
 #define MBL_KERNEL_ADDR    0x00200000u   /* kernel load address */
 #define MBL_KERNEL_MAX     0x01000000u   /* 16 MiB load cap */
-#define MBL_BIOS_CALL      0x00006000u   /* BIOS call frame (asm-only) */
+#define MBL_BOOTCONFIG     0x00000510u   /* mbl_boot_config_t (kernel handoff) */
 
-#define MBL_MAGIC_BOOTINFO 0x314C424Du   /* 'MBL1' */
 #define MBL_MAGIC_BOOTCFG  0x324C424Du   /* 'MBL2' */
 
 typedef struct {
-    uint32_t magic;          /* MBL_MAGIC_BOOTINFO */
-    uint8_t  boot_drive;
-    uint8_t  pad[3];
-} mbl_bootinfo_t;
-
-typedef struct __attribute__((packed)) {
     uint32_t               magic;        /* MBL_MAGIC_BOOTCFG */
     uint8_t                boot_drive;
     uint8_t                pad[3];
@@ -39,7 +30,8 @@ typedef struct __attribute__((packed)) {
  * ========================================================================= */
 #define OWFS_BLOCK_SIZE        0x1000u
 #define OWFS_BLOCK_SHIFT       12u
-#define OWFS_PARTITION_OFFSET  0x10000UL
+#define OWFS_PARTITION_LBA     131200u
+#define OWFS_PARTITION_OFFSET  (131200UL * 512UL)
 #define OWFS_SUPERBLOCK_BLOCK  16u
 #define OWFS_INODE_SIZE        0x100u
 #define OWFS_INODES_PER_BLOCK  16u
@@ -123,19 +115,14 @@ typedef struct {
 } mbl_entry_t;
 
 /* =========================================================================
- * Assembly helpers (boot/bootimg.asm)
+ * UEFI globals (defined in efi_entry.c, accessible from all modules)
  * ========================================================================= */
-uint8_t  inb(uint16_t port);
-void     outb(uint16_t port, uint8_t val);
-uint16_t inw(uint16_t port);
-void     outw(uint16_t port, uint16_t val);
-int      bios_read(uint32_t lba, uint32_t lba_hi, uint16_t seg, uint16_t off,
-                   uint16_t count);
-void     bios_boot(uint16_t seg, uint16_t off, uint8_t drive);
+#include "efi.h"
 
 /* =========================================================================
- * vga.c
+ * gop.c (GOP framebuffer renderer)
  * ========================================================================= */
+void vga_init_gop(void);
 void vga_clear(void);
 void vga_goto(uint8_t row, uint8_t col);
 void vga_putc(char c);
@@ -160,7 +147,7 @@ enum {
 };
 
 /* =========================================================================
- * bios_disk.c
+ * disk.c (UEFI Block I/O)
  * ========================================================================= */
 int disk_read_sectors(uint32_t lba, uint32_t linear, uint16_t count);
 int disk_read_block(uint32_t block, uint32_t linear);
@@ -171,6 +158,7 @@ int disk_read_block(uint32_t block, uint32_t linear);
 int owfs_probe(uint8_t drive);
 int owfs_enumerate(mbl_entry_t *entries, int max);
 int owfs_load_file(uint32_t inode, uint32_t dest, uint32_t *size_out);
+uint8_t owfs_boot_drive(void);
 
 /* =========================================================================
  * menu.c

@@ -88,13 +88,13 @@ static void draw_status(const char *name, int remaining) {
         while (name[i] && n < 43) {
             buf[n++] = name[i++];
         }
-        if (remaining > 9) {
+        if (remaining >= 10) {
             buf[n++] = ' ';
             buf[n++] = 'i';
             buf[n++] = 'n';
             buf[n++] = ' ';
-            buf[n++] = '0';
-            buf[n++] = (char)('0' + remaining);
+            buf[n++] = (char)('0' + (remaining / 10));
+            buf[n++] = (char)('0' + (remaining % 10));
             buf[n++] = 's';
         } else {
             buf[n++] = ' ';

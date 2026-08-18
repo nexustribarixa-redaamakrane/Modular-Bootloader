@@ -1,102 +1,118 @@
 /*
- * kbd.c - polling PS/2 keyboard driver (scancode set 1) and CMOS RTC.
+ * kbd.c - UEFI keyboard and time services (replaces PS/2 + CMOS version).
  *
- * The bootloader runs in protected mode with no IDT, so interrupts stay
- * disabled and the keyboard controller is polled via ports 0x60/0x64.
- * E0-prefixed extended scancodes (arrows, numpad Enter) are folded into
- * the same actions as their basic equivalents.
- *
- * NOTE: HLT is never used here - with interrupts masked HLT would never
- * wake, so all waits are busy loops over the controller status port.
+ * Uses EFI_SIMPLE_TEXT_INPUT_PROTOCOL for keyboard input and
+ * EFI_RUNTIME_SERVICES->GetTime() for RTC functionality.
  */
 
+#include "efi.h"
 #include "mbl.h"
 
-#define KB_STATUS   0x64u
-#define KB_DATA     0x60u
-#define KB_CMD      0x64u
+/* Forward: get current RTC seconds via UEFI GetTime */
+static uint8_t efi_get_seconds(void);
 
-#define STATUS_OUT_FULL  0x01u
-#define STATUS_IN_FULL   0x02u
+/* ============================================================================
+ * Keyboard
+ * ============================================================================ */
 
-static uint8_t g_e0;
-
-static int kbd_has_data(void) {
-    return (inb(KB_STATUS) & STATUS_OUT_FULL) != 0;
-}
-
-int kbd_poll(void) {
-    uint8_t sc;
+int kbd_poll(void)
+{
+    EFI_STATUS status;
+    EFI_INPUT_KEY key;
     int code;
 
-    if (!kbd_has_data()) {
-        return MBL_KEY_NONE;
-    }
-    sc = inb(KB_DATA);
-
-    if (sc == 0xE0) {
-        g_e0 = 1;
-        return MBL_KEY_NONE;
-    }
-    if (sc == 0xE1) {
-        g_e0 = 0;
-        return MBL_KEY_NONE;
-    }
-    if (sc & 0x80) {
-        g_e0 = 0;
+    if (!gConIn) {
         return MBL_KEY_NONE;
     }
 
+    status = gConIn->ReadKeyStroke(gConIn, &key);
+    if (EFI_ERROR(status)) {
+        return MBL_KEY_NONE;
+    }
+
+    /* Check scan codes first (arrow keys, nav) */
+    switch (key.ScanCode) {
+    case SCAN_UP:       return MBL_KEY_UP;
+    case SCAN_DOWN:     return MBL_KEY_DOWN;
+    case SCAN_HOME:     return MBL_KEY_HOME;
+    case SCAN_END:      return MBL_KEY_END;
+    case SCAN_PAGE_UP:  return MBL_KEY_PGUP;
+    case SCAN_PAGE_DOWN:return MBL_KEY_PGDN;
+    }
+
+    /* Check Unicode characters */
     code = MBL_KEY_NONE;
-    switch (sc) {
-        case 0x48: code = MBL_KEY_UP;        break;
-        case 0x50: code = MBL_KEY_DOWN;      break;
-        case 0x47: code = MBL_KEY_HOME;      break;
-        case 0x4F: code = MBL_KEY_END;       break;
-        case 0x49: code = MBL_KEY_PGUP;      break;
-        case 0x51: code = MBL_KEY_PGDN;      break;
-        case 0x1C: code = MBL_KEY_ENTER;     break;
-        case 0x39: code = MBL_KEY_ENTER;     break;   /* space = select */
-        case 0x01: code = MBL_KEY_ESC;       break;
-        case 0x13: code = MBL_KEY_REBOOT;    break;   /* 'r' */
-        case 0x1F: code = MBL_KEY_SHUTDOWN;  break;   /* 's' */
-        default:   code = MBL_KEY_NONE;      break;
+    switch (key.UnicodeChar) {
+    case 0x0D:  code = MBL_KEY_ENTER;    break;  /* Enter */
+    case 0x1B:  code = MBL_KEY_ESC;      break;  /* Escape */
+    case 'r':
+    case 'R':   code = MBL_KEY_REBOOT;   break;
+    case 's':
+    case 'S':   code = MBL_KEY_SHUTDOWN; break;
+    default:    code = MBL_KEY_NONE;      break;
     }
-    g_e0 = 0;
+
     return code;
 }
 
-int kbd_wait(void) {
-    int code;
+int kbd_wait(void)
+{
     for (;;) {
-        code = kbd_poll();
+        int code = kbd_poll();
         if (code != MBL_KEY_NONE) {
             return code;
+        }
+        /* Busy-wait ~1 second tick using GetTime */
+        if (gRT && gRT->GetTime) {
+            uint8_t t0 = efi_get_seconds();
+            while (efi_get_seconds() == t0) {
+                __asm__ volatile ("pause");
+            }
         }
     }
 }
 
-void kbd_reboot(void) {
-    /* 8042 system reset request */
-    while (inb(KB_STATUS) & STATUS_IN_FULL) {
-        /* wait for input buffer to drain */
-    }
-    outb(KB_CMD, 0xFE);
+void kbd_reboot(void)
+{
+    gRT->ResetSystem(EfiResetCold, EFI_SUCCESS, 0, NULL);
     for (;;) {
-        /* reset is imminent; park here if the controller ignores it */
+        __asm__ volatile ("hlt");
     }
 }
 
-/*
- * cmos_read - read a CMOS register.  Waits for the update-in-progress
- * flag to clear before reading so the value is stable.
- */
-uint8_t cmos_read(uint8_t reg) {
-    uint8_t stat;
-    do {
-        outb(0x70u, 0x0Au);
-        stat = inb(0x71u);
-    } while (stat & 0x80u);
-    outb(0x70u, reg);
-    return inb(0x71u);
+/* ============================================================================
+ * RTC (replaces CMOS port I/O)
+ * ============================================================================ */
+
+uint8_t cmos_read(uint8_t reg)
+{
+    (void)reg;
+    return efi_get_seconds();
+}
+
+static uint8_t efi_get_seconds(void)
+{
+    if (!gRT || !gRT->GetTime) {
+        return 0;
+    }
+    {
+        /* EFI_TIME is 12 bytes: Year(2) Month Day DayOfWeek Hour Min Sec ... */
+        uint8_t time_buf[16];
+        EFI_STATUS status;
+
+        status = gRT->GetTime((void *)time_buf, NULL);
+
+        if (EFI_ERROR(status)) {
+            return 0;
+        }
+
+        /* EFI_TIME layout (all little-endian):
+           Offset 0: Year   (UINT16)
+           Offset 2: Month  (UINT8)
+           Offset 3: Day    (UINT8)
+           Offset 4: Hour   (UINT8)
+           Offset 5: Minute (UINT8)
+           Offset 6: Second (UINT8)  <-- we want this */
+        return time_buf[6];
+    }
 }

@@ -1,0 +1,7 @@
+CompileFlags:
+  Add:
+    - -Iinclude
+    - -Iinclude/sutf
+    - -ffreestanding
+    - -nostdlib
+    - --target=x86_64-w64-mingw32

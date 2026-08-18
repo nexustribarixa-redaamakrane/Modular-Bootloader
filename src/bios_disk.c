@@ -1,32 +1,42 @@
 /*
- * bios_disk.c - sector I/O through the BIOS INT 13h AH=0x42 trampoline.
- * bios_read() is implemented in boot/bootimg.asm: it drops to real mode,
- * runs the extended disk read and returns.  The buffer address is passed
- * as a linear address and split into seg:off by the DAP rules.
+ * bios_disk.c - sector I/O through the UEFI Block I/O protocol.
+ *
+ * This replaces the BIOS INT 13h trampoline with direct UEFI calls.
+ * The Block I/O protocol handle is discovered during efi_main().
  */
 
+#include "efi.h"
 #include "mbl.h"
 
-int disk_read_sectors(uint32_t lba, uint32_t linear, uint16_t count) {
-    uint16_t seg;
-    uint16_t off;
-    int rc;
+int disk_read_sectors(uint32_t lba, uint32_t linear, uint16_t count)
+{
+    EFI_STATUS status;
 
     if (count == 0) {
         return 0;
     }
-    seg = (uint16_t)(linear >> 4);
-    off = (uint16_t)(linear & 0x0Fu);
-    rc = bios_read(lba, 0, seg, off, count);
-    return rc;
+    if (!gBlockIO || !gBlockIO->ReadBlocks) {
+        return -1;
+    }
+
+    status = gBlockIO->ReadBlocks(
+        gBlockIO,
+        gBlockIO->Media->MediaId,
+        (EFI_LBA)lba,
+        (UINTN)count * 512u,
+        (void *)(UINTN)linear
+    );
+
+    return EFI_ERROR(status) ? -1 : 0;
 }
 
 /*
  * disk_read_block - read one OWFS block (4096 bytes = 8 sectors) at
  * partition-relative block number `block` into `linear`.
- * The OWFS partition starts at byte offset 0x10000 (LBA 128), so the
- * partition-relative LBA of a block is 128 + block*8.
+ * The OWFS partition starts at LBA OWFS_PARTITION_LBA (131200), so the
+ * LBA of a block is OWFS_PARTITION_LBA + block*8.
  */
-int disk_read_block(uint32_t block, uint32_t linear) {
-    return disk_read_sectors(0x80u + block * 8u, linear, 8);
+int disk_read_block(uint32_t block, uint32_t linear)
+{
+    return disk_read_sectors(OWFS_PARTITION_LBA + block * 8u, linear, 8);
 }

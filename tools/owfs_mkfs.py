@@ -83,19 +83,11 @@ def put64(buf, off, val):
     struct.pack_into("<Q", buf, off, val & 0xFFFFFFFFFFFFFFFF)
 
 
-def block_off(block):
-    return BLOCK_START + block * BLOCK
-
-
-def inode_off(sb, num):
-    block = sb["inode_table_start"] + (num >> 4)
-    return block_off(block) + (num & 0x0F) * 0x100
-
-
 class Volume:
-    def __init__(self, image, total_blocks, label):
+    def __init__(self, image, total_blocks, label, block_start=BLOCK_START):
         self.image = image
         self.total_blocks = total_blocks
+        self.block_start = block_start
         fixed_overhead = SUPER_BLOCK + 1 + INODE_TABLE_BLOCKS  # 273
         self.bitmap_blocks = (total_blocks - fixed_overhead + 32768) // 32769
         self.sb = {
@@ -129,10 +121,17 @@ class Volume:
             "block_count": 0,
         }
 
+    def block_off(self, block):
+        return self.block_start + block * BLOCK
+
+    def inode_off(self, num):
+        block = self.sb["inode_table_start"] + (num >> 4)
+        return self.block_off(block) + (num & 0x0F) * 0x100
+
     def alloc_block(self):
         data_blocks = self.total_blocks - self.sb["data_region_start"]
         for b in range(self.sb["bitmap_block_count"]):
-            base = block_off(self.sb["bitmap_start_block"] + b)
+            base = self.block_off(self.sb["bitmap_start_block"] + b)
             for byte_idx in range(BLOCK):
                 val = self.image[base + byte_idx]
                 if val == 0xFF:
@@ -148,7 +147,7 @@ class Volume:
         raise RuntimeError("OWFS volume is full")
 
     def write_inode(self, num, fields):
-        off = inode_off(self.sb, num)
+        off = self.inode_off(num)
         ino = bytearray(0x100)
         put32(ino, 0x00, fields["inode_number"])
         ino[4] = fields["entry_type"]
@@ -169,7 +168,7 @@ class Volume:
     def alloc_inode(self, entry_type, name, parent):
         # first slot with entry_type == 0 (root occupies slot 0)
         for num in range(self.sb["total_inodes"]):
-            off = inode_off(self.sb, num)
+            off = self.inode_off(num)
             if self.image[off + 4] == 0:
                 self.sb["free_inodes"] -= 1
                 return num
@@ -202,7 +201,7 @@ class Volume:
 
     def catalog_insert(self, name, target_inode, entry_type):
         for bnum in self.root["blocks"]:
-            base = block_off(bnum)
+            base = self.block_off(bnum)
             for e in range(ENTRIES_PER_BLOCK):
                 t = self.image[base + e * 0x100 + 4]
                 if t == 0 or (t & ENTRY_DELETED):
@@ -211,7 +210,7 @@ class Volume:
                     return
         bnum = self.alloc_block()
         self.root["blocks"].append(bnum)
-        self.write_catalog_entry(block_off(bnum), 0, target_inode,
+        self.write_catalog_entry(self.block_off(bnum), 0, target_inode,
                                  entry_type, name)
         self.write_root_inode()
 
@@ -224,13 +223,13 @@ class Volume:
             if i >= 10 and indirect == 0:
                 indirect = self.alloc_block()
             block = self.alloc_block()
-            self.image[block_off(block):block_off(block) + BLOCK] = data[i * BLOCK:(i + 1) * BLOCK]
+            self.image[self.block_off(block):self.block_off(block) + BLOCK] = data[i * BLOCK:(i + 1) * BLOCK]
             direct.append(block)
         if indirect:
             ibuf = bytearray(BLOCK)
             for i in range(10, len(direct)):
                 put32(ibuf, (i - 10) * 4, direct[i])
-            self.image[block_off(indirect):block_off(indirect) + BLOCK] = ibuf
+            self.image[self.block_off(indirect):self.block_off(indirect) + BLOCK] = ibuf
             direct = direct[:10]
         self.write_inode(
             inode_num,
@@ -274,22 +273,22 @@ class Volume:
 
         bitmap_blocks = []
         for b in range(self.sb["bitmap_block_count"]):
-            off = block_off(self.sb["bitmap_start_block"] + b)
+            off = self.block_off(self.sb["bitmap_start_block"] + b)
             bitmap_blocks.append(bytes(self.image[off:off + BLOCK]))
         put64(sb, 0x3C, fletcher64(bitmap_blocks))
 
         put32(sb, 0x84, crc32c_struct(sb, 0x84))
-        self.image[block_off(SUPER_BLOCK):block_off(SUPER_BLOCK) + BLOCK] = sb
+        self.image[self.block_off(SUPER_BLOCK):self.block_off(SUPER_BLOCK) + BLOCK] = sb
 
 
-def format_owfs(image, total_blocks, label, files, alloc_super=True):
+def format_owfs(image, total_blocks, label, files, alloc_super=True, block_start=BLOCK_START):
     """Format `image` (bytearray) as an OWFS volume and add `files`.
 
     `files` is a list of (name_bytes, data_bytes).
     """
     if total_blocks < SUPER_BLOCK + 1 + 1 + INODE_TABLE_BLOCKS + 1:
         raise ValueError("total_blocks too small for OWFS")
-    vol = Volume(image, total_blocks, label)
+    vol = Volume(image, total_blocks, label, block_start=block_start)
 
     # root catalog block (bitmap alloc order: rel 0 first)
     root_block = vol.alloc_block()
@@ -299,6 +298,7 @@ def format_owfs(image, total_blocks, label, files, alloc_super=True):
         vol.add_file(name, data)
     if alloc_super:
         vol.write_superblock()
+    return vol
     return vol
 
 

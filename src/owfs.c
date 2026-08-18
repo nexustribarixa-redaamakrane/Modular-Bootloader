@@ -99,7 +99,7 @@ static void owfs_name_to_ascii(char *out, const uint8_t *name, uint8_t len) {
  * ------------------------------------------------------------------------- */
 int owfs_probe(uint8_t drive) {
     g_drive = drive;
-    if (disk_read_block(OWFS_SUPERBLOCK_BLOCK, (uint32_t)g_block_buf) != 0) {
+    if (disk_read_block(OWFS_SUPERBLOCK_BLOCK, (uint32_t)(uintptr_t)g_block_buf) != 0) {
         return -1;
     }
     if (read32(g_block_buf) != OWFS_MAGIC) {
@@ -123,7 +123,7 @@ static int owfs_read_inode(uint32_t num, owfs_inode_t *ino) {
         return -1;
     }
     block = g_sb.inode_table_start + (num >> 4);
-    if (disk_read_block(block, (uint32_t)g_block_buf) != 0) {
+    if (disk_read_block(block, (uint32_t)(uintptr_t)g_block_buf) != 0) {
         return -2;
     }
     src = g_block_buf + (num & 0x0Fu) * OWFS_INODE_SIZE;
@@ -155,7 +155,7 @@ static int owfs_blockmap_get(const owfs_inode_t *inode, uint32_t idx,
     if (disk_read_block(inode->indirect_block, MBL_FS_BUF) != 0) {
         return -2;
     }
-    *out_block = read32((const void *)(MBL_FS_BUF + (idx - OWFS_DIRECT_BLOCKS) * 4u));
+    *out_block = read32((const void *)(uintptr_t)(MBL_FS_BUF + (idx - OWFS_DIRECT_BLOCKS) * 4u));
     if (*out_block == 0) {
         return -1;
     }
@@ -180,17 +180,17 @@ int owfs_enumerate(mbl_entry_t *entries, int max) {
         if (owfs_blockmap_get(&root, idx, &bnum) != 0) {
             return -3;
         }
-        if (disk_read_block(bnum, MBL_FS_BUF) != 0) {
+        if (disk_read_block(bnum, (uint32_t)MBL_FS_BUF) != 0) {
             return -4;
         }
         for (e = 0; e < OWFS_ENTRIES_PER_BLOCK; e++) {
             const owfs_catalog_entry_t *ce =
-                (const owfs_catalog_entry_t *)(MBL_FS_BUF + e * OWFS_CATALOG_ENTRY_SIZE);
+                (const owfs_catalog_entry_t *)(uintptr_t)(MBL_FS_BUF + e * OWFS_CATALOG_ENTRY_SIZE);
             if (ce->entry_type != 0 && !(ce->entry_type & OWFS_ENTRY_DELETED)) {
-                if (crc32c_struct(ce, sizeof(owfs_catalog_entry_t), 0xFCu) !=
-                    ce->checksum) {
-                    continue;
-                }
+            if (crc32c_struct(ce, sizeof(owfs_catalog_entry_t), 0xFCu) !=
+                ce->checksum) {
+                continue;
+            }
                 if (count >= max) {
                     return count;
                 }
@@ -237,7 +237,7 @@ int owfs_load_file(uint32_t inode_num, uint32_t dest, uint32_t *size_out) {
                 n = rem;
             }
         }
-        copy_bytes((void *)dst, (const void *)MBL_FS_BUF, n);
+        copy_bytes((void *)(uintptr_t)dst, (const void *)(uintptr_t)MBL_FS_BUF, n);
         dst += n;
     }
 
