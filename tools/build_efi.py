@@ -64,7 +64,13 @@ SRCS = [
     "sutf/sucs_mode.c",
 ]
 
+AR = os.environ.get(
+    "MBL_AR",
+    r"C:\w64devkit\bin\x86_64-w64-mingw32-ar.exe"
+)
+
 EFI_OUT = os.path.join(BUILD, "BOOTX64.EFI")
+LIB_OUT = os.path.join(BUILD, "libmbl.a")
 
 
 def run(cmd):
@@ -84,6 +90,14 @@ def compile_sources():
     return obj_files
 
 
+def create_archive(obj_files):
+    if os.path.exists(LIB_OUT):
+        os.remove(LIB_OUT)
+    run([AR, "rcs", LIB_OUT, *obj_files])
+    size = os.path.getsize(LIB_OUT)
+    print("  libmbl.a: %d bytes" % size)
+
+
 def link(obj_files):
     run([GCC, *LINKFLAGS, "-o", EFI_OUT, *obj_files])
     size = os.path.getsize(EFI_OUT)
@@ -92,6 +106,7 @@ def link(obj_files):
 
 def main():
     objs = compile_sources()
+    create_archive(objs)
     link(objs)
     return 0
 

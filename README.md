@@ -109,11 +109,12 @@ python tools/build_image.py
 
 This pipeline automatically:
 1. Compiles all freestanding C sources with `x86_64-w64-mingw32-gcc`.
-2. Links `build/BOOTX64.EFI` with `-Wl,--subsystem,10 -Wl,-e,EfiMain`.
-3. Assembles `boot/test_kernel.asm` to `build/test_kernel.bin`.
-4. Creates a 96 MiB GPT disk image with a FAT32 ESP containing `\EFI\BOOT\BOOTX64.EFI`.
-5. Formats the OWFS data partition starting at LBA 131200 via `tools/owfs_mkfs.py` and seeds `kernel.bin`.
-6. Writes the final bootable raw disk image `mbl_test.img`.
+2. Packages standalone 64-bit static library **`build/libmbl.a`** via `ar rcs`.
+3. Links `build/BOOTX64.EFI` with `-Wl,--subsystem,10 -Wl,-e,EfiMain`.
+4. Assembles `boot/test_kernel.asm` to `build/test_kernel.bin`.
+5. Creates a 96 MiB GPT disk image with a FAT32 ESP containing `\EFI\BOOT\BOOTX64.EFI`.
+6. Formats the OWFS data partition starting at LBA 131200 via `tools/owfs_mkfs.py` and seeds `kernel.bin`.
+7. Writes the final bootable raw disk image `mbl_test.img`.
 
 ### Run Automated QEMU Test
 

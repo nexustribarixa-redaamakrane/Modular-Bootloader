@@ -18,7 +18,8 @@
 | GRUB-style Menu (`menu.c`) | DONE | 80x25 text layout on GOP framebuffer with countdown timer, keyboard navigation, reboot, and shutdown. |
 | Boot Entry & Handoff (`main.c`) | DONE | Probes OWFS, runs menu, loads kernel to `0x200000`, publishes `mbl_boot_config_t` at `0x00000510`, calls `GetMemoryMap` + `ExitBootServices`, sets segments and jumps to kernel. |
 | SuperUnicode / SUTF-8 (`sutf/`) | DONE | Decodes SUTF-8 volume / catalog filenames and initializes kernel SUCS boot configuration. |
-| EFI Application Builder (`build_efi.py`) | DONE | Compiles all C modules with `x86_64-w64-mingw32-gcc` (`-m64 -ffreestanding -mno-red-zone -mno-sse -mcmodel=large`), links `build/BOOTX64.EFI` (`-Wl,--subsystem,10 -Wl,-e,EfiMain`). |
+| EFI Application Builder (`build_efi.py`) | DONE | Compiles all C modules with `x86_64-w64-mingw32-gcc` (`-m64 -ffreestanding -mno-red-zone -mno-sse -mcmodel=large`), generates `build/libmbl.a` and links `build/BOOTX64.EFI` (`-Wl,--subsystem,10 -Wl,-e,EfiMain`). |
+| Static Library (`libmbl.a`) | DONE | Standalone 64-bit static archive in `build/libmbl.a` (29,250 bytes) packaging all 9 UEFI C modules. |
 | GPT & FAT32 Image Builder (`build_image.py`) | DONE | Assembles protective MBR, primary/backup GPT headers and partition tables, 64 MiB FAT32 ESP with `\EFI\BOOT\BOOTX64.EFI`, and 32 MiB OWFS partition with `kernel.bin`. |
 | OWFS Volume Formatter (`owfs_mkfs.py`) | DONE | Formats OWFS volume at arbitrary partition offsets (`block_start=OWFS_LBA * SECTOR`) with CRC32c and Fletcher-64 checksums. |
 | Automated QEMU Test (`test_qemu.py`) | DONE | Boots `mbl_test.img` under QEMU with `OVMF.fd`, connects via monitor, verifies menu rendering and kernel handoff. |
