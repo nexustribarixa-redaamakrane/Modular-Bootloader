@@ -59,6 +59,7 @@ SRCS = [
     "bios_disk.c",
     "menu.c",
     "owfs.c",
+    "bancode/bancode_boot.c",
     "main.c",
     "sutf/sutf8.c",
     "sutf/sucs_mode.c",

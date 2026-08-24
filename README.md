@@ -58,8 +58,25 @@ MBL is a 64-bit UEFI application (`BOOTX64.EFI`) featuring a GRUB-style text-mod
 - **OWFS Filesystem Driver** — Read-only catalog enumeration, block mapping (direct and indirect blocks), and file loading with full CRC32c verification from GPT data partitions.
 - **GRUB-Style Text Menu** — Responsive keyboard-driven boot menu with automatic countdown, timeout fallback, reboot, and shutdown.
 - **SuperUnicode (SUCS / SUTF)** — Integrated Base SUCS and SUTF-8 text decoder for catalog names and kernel boot configuration transport.
+- **BANcode Boot Diagnostics** — Every boot fault path raises a `uint32_t` codepoint from the canonical C+/W+/S+/B+ registry blocks (provisional MBL placements), recorded in an in-memory ring buffer and rendered on fail screens together with their resolved Kernel Security Trap codepoints.
 - **Freestanding C99** — Zero standard library dependencies (`-ffreestanding -nostdlib -mno-red-zone`).
 - **Dual License** — MIT and Apache 2.0.
+
+---
+
+## Ecosystem Compatibility
+
+MBL is designed to share translation units with its sibling OpenWindows
+projects. A single-TU smoke test (`tests/compat_smoke.c`, run via
+`python tools/compat_smoke.py`) compiles `mbl.h` together with all four
+sibling headers and verifies every integration surface at runtime:
+
+| Project | Integration |
+|---|---|
+| **SuperUnicode** | `sutf/sutf8.{h,c}`, `sutf/sucs_mode.{h,c}`, and `sutf/sucs_types.h` are vendored byte-identical copies of libsutf; catalog names decode through the same overlong-rejecting, trap-range-excluding codec, and the handoff block embeds `sucs_kernel_boot_config_t` directly. |
+| **BANcode** | `<bancode/bancode_all.h>` mirrors the upstream generated master header (shared include guard: whichever comes first wins); driver APIs return `bancode_t` codes from the canonical blocks, with trap geometry matching `bancode_to_trap()`. Concrete slots are provisional placements in `<bancode/mbl_bancode.h>`. |
+| **vip** | Volume addressing uses absolute 512-byte LBAs (`OWFS_PARTITION_LBA` = 131200 = `VIP_OWFS_PARTITION_LBA`); the MBL reserved region (LBAs 0–127) is honored as `VIP_MBL_RESERVED_LBA_COUNT`; runtime parity proven against the real libvip. |
+| **OpenWindows-Storage** | On-disk structures mirror libowfs byte-for-byte — including the full 4096-byte superblock with ChaCha20 key slots. When storage headers are on the include path they are adopted via `__has_include` (zero redefinitions). Encrypted volumes are refused cleanly (`MBL_SOFT_ENCRYPTED_VOLUME`), USFS media is detected and never misread, and dirty/error/locked volume states raise W+ WARNcode telemetry while still allowing read-only boot. |
 
 ---
 
@@ -125,6 +142,14 @@ python tools/test_qemu.py
 
 Launches QEMU in headless mode with `OVMF.fd`, verifies UEFI boot discovery, GOP framebuffer initialization, menu responsiveness, and test kernel execution.
 
+### Run Ecosystem Compatibility Suite
+
+```bash
+python tools/compat_smoke.py
+```
+
+Compiles `tests/compat_smoke.c` as a single translation unit together with the public headers **and** implementations of `../BANcode`, `../superunicode`, `../OpenWindows-Storage`, and `../vip`, then executes ~770 runtime checks covering on-disk layout parity, absolute-LBA addressing, SUTF codec agreement, mode-controller handoff semantics, and BANcode trap geometry. The sibling repositories must be checked out next to this one.
+
 ### Run in QEMU Interactively
 
 ```bash
@@ -145,8 +170,12 @@ Modular-Bootloader/
 │   ├── efi.h                # Minimal UEFI 2.x types and protocol definitions
 │   ├── efi_font.h           # 8x16 CP437 bitmap font glyph table
 │   ├── mbl.h                # Master MBL definitions, OWFS layout, prototypes
+│   ├── bancode/
+│   │   ├── bancode_all.h    # BANcode framework mirror (upstream-guarded)
+│   │   └── mbl_bancode.h    # Provisional MBL boot diagnostic placements
 │   └── sutf/
 │       ├── sucs_mode.h      # Kernel SUCS mode configuration
+│       ├── sucs_types.h     # Base SUCS codepoint space & sentinels
 │       └── sutf8.h          # SUTF-8 stream encoder / decoder
 ├── src/
 │   ├── efi_entry.c          # UEFI entry point (EfiMain), protocol discovery
@@ -154,15 +183,20 @@ Modular-Bootloader/
 │   ├── kbd.c                # UEFI Simple Text Input & RTC timer
 │   ├── bios_disk.c          # UEFI Block I/O disk sector reader
 │   ├── owfs.c               # Read-only OpenWindows File System driver
+│   ├── bancode/
+│   │   └── bancode_boot.c   # Diagnostic ring buffer, code names, formatter
 │   ├── menu.c               # GRUB-style boot menu logic
 │   ├── main.c               # kmain, volume probe, kernel handoff
 │   └── sutf/
 │       ├── sutf8.c          # SUTF-8 character decoder routines
 │       └── sucs_mode.c      # SUCS boot configuration init
+├── tests/
+│   └── compat_smoke.c       # Single-TU ecosystem compatibility suite
 ├── tools/
 │   ├── build_efi.py         # UEFI C compiler and linker script
 │   ├── build_image.py       # GPT + FAT32 ESP + OWFS disk image builder
 │   ├── owfs_mkfs.py         # OWFS partition formatter and seeder
+│   ├── compat_smoke.py      # Ecosystem compatibility test runner
 │   └── test_qemu.py         # Automated QEMU UEFI test harness
 ├── memory.md                # Persistent system architecture tracker
 └── README.md                # Project documentation

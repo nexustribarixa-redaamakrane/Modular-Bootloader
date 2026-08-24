@@ -7,8 +7,21 @@
  *   - inode table + direct/indirect block maps
  *   - SUTF-8 (SuperUnicode) name decoding via the vendored sutf8 module
  *
+ * Ecosystem compatibility:
+ *   - OpenWindows-Storage: superblock/inode/catalog layouts mirror
+ *     libowfs headers byte-for-byte (4096-byte superblock incl. key
+ *     slots). Encrypted volumes (OWFS_SEC_ENCRYPTED, ChaCha20 data-at-
+ *     rest) are refused cleanly - the bootloader holds no key material.
+ *     USFS removable-media volumes are detected and reported (S+ soft
+ *     fault), never misread as OWFS. Non-clean power-cut state flags
+ *     raise W+ WARNcode telemetry but still allow read-only boot.
+ *   - BANcode: every fault path raises an MBL_* provisional code
+ *     (C+/W+/S+/B+ blocks) via mbl_diag_raise(); driver entry points
+ *     return bancode_t codes.
+ *
  * Layout recap (see OpenWindows-Storage/owfs/include/owfs_types.h):
- *   partition starts at byte offset 0x10000 (LBA 128, 8 sectors per block)
+ *   OWFS partition = GPT partition 2, absolute LBA 131200
+ *   (MBL reserved region LBAs 0-127 + ESP at LBA 128 in between)
  *   block 16     : superblock
  *   block 17..   : allocation bitmap (not needed for reading)
  *   then inode table (256 blocks), then the data region.
@@ -22,6 +35,8 @@
 
 static owfs_superblock_t g_sb;
 static uint8_t g_drive;
+/* Scratch block for metadata reads (inodes); keeps MBL_FS_BUF free for
+ * catalog/data streaming. */
 static uint8_t g_block_buf[OWFS_BLOCK_SIZE];
 
 /* -------------------------------------------------------------------------
@@ -97,23 +112,66 @@ static void owfs_name_to_ascii(char *out, const uint8_t *name, uint8_t len) {
 /* -------------------------------------------------------------------------
  * probe / read / enumerate
  * ------------------------------------------------------------------------- */
-int owfs_probe(uint8_t drive) {
+
+/* Validate the volume condition flags of a probed superblock. Raises
+ * W+ WARNcode telemetry for non-clean power-cut states and version
+ * drift, but never blocks a read-only boot. */
+static void owfs_warn_volume_condition(void) {
+    if (g_sb.state_flags & OWFS_STATE_DIRTY) {
+        mbl_diag_raise(MBL_WARN_VOLUME_DIRTY);
+    }
+    if (g_sb.state_flags & OWFS_STATE_LOCKED) {
+        mbl_diag_raise(MBL_WARN_VOLUME_LOCKED);
+    }
+    if (g_sb.state_flags & OWFS_STATE_ERROR) {
+        mbl_diag_raise(MBL_WARN_STATE_ERROR);
+    }
+    if (g_sb.version_major == OWFS_VERSION_MAJOR &&
+        g_sb.version_minor != OWFS_VERSION_MINOR) {
+        mbl_diag_raise(MBL_WARN_VERSION_MISMATCH);
+    }
+}
+
+bancode_t owfs_probe(uint8_t drive) {
     g_drive = drive;
-    if (disk_read_block(OWFS_SUPERBLOCK_BLOCK, (uint32_t)(uintptr_t)g_block_buf) != 0) {
-        return -1;
+    if (disk_read_block(OWFS_SUPERBLOCK_BLOCK, (uint32_t)(uintptr_t)&g_sb) != 0) {
+        mbl_diag_raise(MBL_BAN_IO_ERROR);
+        return MBL_BAN_IO_ERROR;
     }
-    if (read32(g_block_buf) != OWFS_MAGIC) {
-        return -2;
+    /* USFS removable-media volumes share the 256-byte entry geometry but
+     * a different superblock - never misread one as OWFS. */
+    if (g_sb.magic == USFS_MAGIC) {
+        mbl_diag_raise(MBL_SOFT_IS_USFS);
+        return MBL_SOFT_IS_USFS;
     }
-    if (read32(g_block_buf + 8) != OWFS_BLOCK_SIZE) {
-        return -3;
+    if (g_sb.magic != OWFS_MAGIC) {
+        /* Neither OWFS nor USFS: unformatted or foreign partition. */
+        mbl_diag_raise(MBL_SOFT_NO_VOLUME);
+        return MBL_SOFT_NO_VOLUME;
     }
-    if (crc32c_struct(g_block_buf, OWFS_BLOCK_SIZE, OWFS_SUPERBLOCK_CK) !=
-        read32(g_block_buf + OWFS_SUPERBLOCK_CK)) {
-        return -4;
+    if (g_sb.block_size != OWFS_BLOCK_SIZE) {
+        /* OWFS magic present but geometry is wrong -> real corruption. */
+        mbl_diag_raise(MBL_BAN_SB_MAGIC);
+        return MBL_BAN_SB_MAGIC;
     }
-    copy_bytes(&g_sb, g_block_buf, sizeof(owfs_superblock_t));
-    return 0;
+    if (crc32c_struct(&g_sb, OWFS_BLOCK_SIZE, OWFS_SUPERBLOCK_CK) !=
+        g_sb.checksum) {
+        mbl_diag_raise(MBL_BAN_SB_CHECKSUM);
+        return MBL_BAN_SB_CHECKSUM;
+    }
+    if (g_sb.version_major > OWFS_VERSION_MAJOR) {
+        mbl_diag_raise(MBL_WARN_VERSION_MISMATCH);
+        return MBL_SOFT_NO_VOLUME;
+    }
+    /* Data blocks on encrypted volumes are ChaCha20 ciphertext; the
+     * bootloader holds no key material, so loading would yield garbage.
+     * Refuse cleanly with a recoverable soft fault instead. */
+    if (g_sb.security_flags & OWFS_SEC_ENCRYPTED) {
+        mbl_diag_raise(MBL_SOFT_ENCRYPTED_VOLUME);
+        return MBL_SOFT_ENCRYPTED_VOLUME;
+    }
+    owfs_warn_volume_condition();
+    return MBL_COM_VOLUME_PROBE_OK;
 }
 
 static int owfs_read_inode(uint32_t num, owfs_inode_t *ino) {
@@ -124,6 +182,7 @@ static int owfs_read_inode(uint32_t num, owfs_inode_t *ino) {
     }
     block = g_sb.inode_table_start + (num >> 4);
     if (disk_read_block(block, (uint32_t)(uintptr_t)g_block_buf) != 0) {
+        mbl_diag_raise(MBL_BAN_IO_ERROR);
         return -2;
     }
     src = g_block_buf + (num & 0x0Fu) * OWFS_INODE_SIZE;
@@ -132,6 +191,7 @@ static int owfs_read_inode(uint32_t num, owfs_inode_t *ino) {
         return -3;
     }
     if (crc32c_struct(ino, sizeof(owfs_inode_t), 0xFCu) != ino->checksum) {
+        mbl_diag_raise(MBL_BAN_INODE_CHECKSUM);
         return -4;
     }
     return 0;
@@ -140,23 +200,28 @@ static int owfs_read_inode(uint32_t num, owfs_inode_t *ino) {
 static int owfs_blockmap_get(const owfs_inode_t *inode, uint32_t idx,
                              uint32_t *out_block) {
     if (idx >= inode->block_count) {
+        mbl_diag_raise(MBL_SOFT_BAD_BLOCK_MAP);
         return -1;
     }
     if (idx < OWFS_DIRECT_BLOCKS) {
         if (inode->direct_blocks[idx] == 0) {
+            mbl_diag_raise(MBL_SOFT_BAD_BLOCK_MAP);
             return -1;
         }
         *out_block = inode->direct_blocks[idx];
         return 0;
     }
     if (inode->indirect_block == 0) {
+        mbl_diag_raise(MBL_SOFT_BAD_BLOCK_MAP);
         return -1;
     }
     if (disk_read_block(inode->indirect_block, MBL_FS_BUF) != 0) {
+        mbl_diag_raise(MBL_BAN_IO_ERROR);
         return -2;
     }
     *out_block = read32((const void *)(uintptr_t)(MBL_FS_BUF + (idx - OWFS_DIRECT_BLOCKS) * 4u));
     if (*out_block == 0) {
+        mbl_diag_raise(MBL_SOFT_BAD_BLOCK_MAP);
         return -1;
     }
     return 0;
@@ -171,6 +236,7 @@ int owfs_enumerate(mbl_entry_t *entries, int max) {
         return -1;
     }
     if (!(root.entry_type & OWFS_ENTRY_CATALOG)) {
+        mbl_diag_raise(MBL_BAN_INODE_CHECKSUM);
         return -2;
     }
 
@@ -181,6 +247,7 @@ int owfs_enumerate(mbl_entry_t *entries, int max) {
             return -3;
         }
         if (disk_read_block(bnum, (uint32_t)MBL_FS_BUF) != 0) {
+            mbl_diag_raise(MBL_BAN_IO_ERROR);
             return -4;
         }
         for (e = 0; e < OWFS_ENTRIES_PER_BLOCK; e++) {
@@ -189,6 +256,7 @@ int owfs_enumerate(mbl_entry_t *entries, int max) {
             if (ce->entry_type != 0 && !(ce->entry_type & OWFS_ENTRY_DELETED)) {
             if (crc32c_struct(ce, sizeof(owfs_catalog_entry_t), 0xFCu) !=
                 ce->checksum) {
+                mbl_diag_raise(MBL_BAN_CATALOG_CHECKSUM);
                 continue;
             }
                 if (count >= max) {
@@ -203,32 +271,52 @@ int owfs_enumerate(mbl_entry_t *entries, int max) {
             }
         }
     }
+    if (count > 0) {
+        /* Telemetry only; enumeration result is the entry count. */
+        mbl_diag_raise(MBL_COM_CATALOG_ENUM_OK);
+    }
     return count;
 }
 
-int owfs_load_file(uint32_t inode_num, uint32_t dest, uint32_t *size_out) {
+bancode_t owfs_load_file(uint32_t inode_num, uint32_t dest, uint32_t *size_out) {
     owfs_inode_t ino;
     uint32_t idx;
     uint32_t dst = dest;
+    bancode_t rc;
+
+    /* Propagate whichever specific fault the helper raised (I/O,
+     * checksum, out-of-range) rather than flattening to one code. */
+    #define MBL_PROPAGATE() do {                                       \
+        const mbl_diag_t *d_ = mbl_diag_last();                        \
+        return (d_ != NULL) ? d_->code : MBL_BAN_LOAD_FAILED;          \
+    } while (0)
 
     if (owfs_read_inode(inode_num, &ino) != 0) {
-        return -1;
+        MBL_PROPAGATE();
     }
     if (!(ino.entry_type & OWFS_ENTRY_FILE)) {
-        return -2;
+        mbl_diag_raise(MBL_SOFT_NOT_A_FILE);
+        return MBL_SOFT_NOT_A_FILE;
+    }
+    if (ino.size_bytes < 16u) {
+        mbl_diag_raise(MBL_SOFT_KERNEL_TOO_SMALL);
+        return MBL_SOFT_KERNEL_TOO_SMALL;
     }
     if (ino.size_bytes > MBL_KERNEL_MAX) {
-        return -3;
+        mbl_diag_raise(MBL_SOFT_KERNEL_TOO_LARGE);
+        return MBL_SOFT_KERNEL_TOO_LARGE;
     }
 
+    rc = MBL_COM_KERNEL_LOAD_OK;
     for (idx = 0; idx < ino.block_count; idx++) {
         uint32_t bnum;
         uint32_t n = OWFS_BLOCK_SIZE;
         if (owfs_blockmap_get(&ino, idx, &bnum) != 0) {
-            return -4;
+            MBL_PROPAGATE();
         }
         if (disk_read_block(bnum, MBL_FS_BUF) != 0) {
-            return -5;
+            mbl_diag_raise(MBL_BAN_IO_ERROR);
+            return MBL_BAN_IO_ERROR;
         }
         if (idx + 1u == ino.block_count) {
             uint32_t filled = idx * OWFS_BLOCK_SIZE;
@@ -240,11 +328,13 @@ int owfs_load_file(uint32_t inode_num, uint32_t dest, uint32_t *size_out) {
         copy_bytes((void *)(uintptr_t)dst, (const void *)(uintptr_t)MBL_FS_BUF, n);
         dst += n;
     }
+    #undef MBL_PROPAGATE
 
     if (size_out) {
         *size_out = ino.size_bytes;
     }
-    return 0;
+    mbl_diag_raise(MBL_COM_KERNEL_LOAD_OK);
+    return rc;
 }
 
 uint8_t owfs_boot_drive(void) {

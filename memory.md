@@ -18,6 +18,8 @@
 | GRUB-style Menu (`menu.c`) | DONE | 80x25 text layout on GOP framebuffer with countdown timer, keyboard navigation, reboot, and shutdown. |
 | Boot Entry & Handoff (`main.c`) | DONE | Probes OWFS, runs menu, loads kernel to `0x200000`, publishes `mbl_boot_config_t` at `0x00000510`, calls `GetMemoryMap` + `ExitBootServices`, sets segments and jumps to kernel. |
 | SuperUnicode / SUTF-8 (`sutf/`) | DONE | Decodes SUTF-8 volume / catalog filenames and initializes kernel SUCS boot configuration. |
+| BANcode Diagnostics (`bancode/`) | DONE | Vendored `<bancode/bancode_all.h>` framework mirror (shared upstream guard) + provisional MBL placements in `<bancode/mbl_bancode.h>`; ring-buffer recorder in `src/bancode/bancode_boot.c`; driver APIs return `bancode_t` (C+/W+/S+/B+ blocks); fail screens render code + codename + trap slot. |
+| Ecosystem Compatibility Suite | DONE | `tests/compat_smoke.c` + `tools/compat_smoke.py`: single TU with mbl.h + BANcode + libsutf + owfs/usfs + vip headers; ~770 runtime checks (layout parity via adopted 4096-byte superblock, VIP absolute-LBA math, codec parity, mode-controller handoff, trap geometry). 769/769 passing. |
 | EFI Application Builder (`build_efi.py`) | DONE | Compiles all C modules with `x86_64-w64-mingw32-gcc` (`-m64 -ffreestanding -mno-red-zone -mno-sse -mcmodel=large`), generates `build/libmbl.a` and links `build/BOOTX64.EFI` (`-Wl,--subsystem,10 -Wl,-e,EfiMain`). |
 | Static Library (`libmbl.a`) | DONE | Standalone 64-bit static archive in `build/libmbl.a` (29,250 bytes) packaging all 9 UEFI C modules. |
 | GPT & FAT32 Image Builder (`build_image.py`) | DONE | Assembles protective MBR, primary/backup GPT headers and partition tables, 64 MiB FAT32 ESP with `\EFI\BOOT\BOOTX64.EFI`, and 32 MiB OWFS partition with `kernel.bin`. |
@@ -56,7 +58,22 @@ python tools/build_image.py
 
 # Run automated QEMU UEFI test
 python tools/test_qemu.py
+
+# Run ecosystem compatibility suite (needs sibling repos: BANcode,
+# superunicode, OpenWindows-Storage, vip next to this directory)
+python tools/compat_smoke.py
 ```
+
+---
+
+## 2.1 Ecosystem Compatibility Contract
+
+| Sibling | Mechanism | Key invariants |
+| :--- | :--- | :--- |
+| `Documents/BANcode` | `<bancode/bancode_all.h>` mirror shares the upstream `BANCODE_ALL_H` guard (first include wins); MBL_* provisional codes live in a separate header so they survive either order. | Block boundaries `0x0011A000-AEFF`; trap geometry 15 slots x 128 codes; `bancode_to_trap()` parity. Provisional neighborhoods: C+ `AC20-23`, W+ `AA20-23`, S+ `AEA0-A6`, B+ `A2E0-E5` — disjoint from VIP's `AD00+/AEE0+/A3E0+`. |
+| `Documents/superunicode` | Vendored copies are byte-identical to libsutf (`fc /b` verified). | SUTF-8 1–6 byte codec with overlong rejection; sentinels `SUCS_INVALID_CODEPOINT=0x7FFFFFFF`, trap range `0x7FFFFFF0-E`; handoff embeds `sucs_kernel_boot_config_t`. |
+| `Documents/OpenWindows-Storage` | `mbl.h` adopts authoritative owfs/usfs headers via `__has_include(<owfs_types.h>)`; standalone spec copies otherwise (values identical). | Superblock is the full 4096-byte layout (key slots at `0x8C/0x18C`, nonce at `0x28C`); inode/catalog `0x100` bytes, checksums at `0xFC`. Probe refuses `OWFS_SEC_ENCRYPTED` volumes (no key material), detects USFS magic `0x55534653`, warns on DIRTY/LOCKED/ERROR state flags but allows read-only boot. |
+| `Documents/vip` | Absolute-512-byte-LBA addressing model shared with GPT/Block I/O; runtime parity against real libvip in the smoke test. | `OWFS_PARTITION_LBA == VIP_OWFS_PARTITION_LBA == 131200`; MBL reserved region = LBAs 0–127 (`VIP_MBL_RESERVED_LBA_COUNT`); `fvip_entry_absolute_lba()` matches `disk_read_block()` math (`partition_lba + block*8`). |
 
 ---
 
@@ -135,15 +152,20 @@ typedef struct {
 | :--- | :--- |
 | `include/efi.h` | Minimal UEFI 2.x type definitions, protocol structs, system table wrappers, and globals |
 | `include/efi_font.h` | 8x16 CP437 bitmap font glyph array (95 printable ASCII characters) |
-| `include/mbl.h` | Master bootloader constants, OWFS layout structs, menu entry structures, and C function prototypes |
+| `include/mbl.h` | Master bootloader constants, OWFS layout structs (adopting libowfs headers when present), menu entry structures, diagnostic API, and C function prototypes |
+| `include/bancode/bancode_all.h` | BANcode framework mirror (shared upstream guard, inline trap/classification helpers) |
+| `include/bancode/mbl_bancode.h` | Provisional MBL boot-path codes in the canonical C+/W+/S+/B+ blocks |
 | `include/sutf/sutf8.h` | SUTF-8 stream encoder / decoder prototypes |
 | `include/sutf/sucs_mode.h` | SuperUnicode mode definitions (`SUCS_MODE_BASE`, `SUCS_MODE_EXTENDED`) |
 | `src/efi_entry.c` | UEFI entry point (`EfiMain`), locates GOP, Block I/O, ConIn, ConOut |
 | `src/gop.c` | GOP framebuffer text-mode emulation layer (implements `vga_*` API) |
 | `src/kbd.c` | UEFI keyboard polling and `rtc_get_seconds()` RTC wrapper |
 | `src/bios_disk.c` | Block I/O read wrappers for sector and OWFS block access |
-| `src/owfs.c` | Read-only OpenWindows File System driver |
+| `src/owfs.c` | Read-only OWFS driver returning BANcode diagnostics (USFS detection, encryption refusal, state telemetry) |
+| `src/bancode/bancode_boot.c` | Diagnostic ring buffer, codename table, freestanding hex formatter |
 | `src/menu.c` | GRUB-style text menu rendering and input handling |
-| `src/main.c` | `kmain` workflow: probe OWFS -> show menu -> load kernel -> `ExitBootServices` -> handoff |
+| `src/main.c` | `kmain` workflow: probe OWFS -> show menu -> load kernel -> `ExitBootServices` -> handoff; renders BANcode on fail screens |
+| `tests/compat_smoke.c` | Single-TU ecosystem compatibility suite (~769 checks) |
+| `tools/compat_smoke.py` | Compatibility suite runner (host gcc + sibling repos) |
 | `src/sutf/sutf8.c` | SUTF-8 decoding implementation |
 | `src/sutf/sucs_mode.c` | Kernel SUCS configuration initialization |

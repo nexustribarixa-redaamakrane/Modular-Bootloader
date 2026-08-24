@@ -17,10 +17,44 @@ static mbl_entry_t g_entries[MBL_MENU_MAX];
 extern void vga_init_gop(void);
 
 static void fail(const char *msg) {
+    char diagbuf[48];
+    const mbl_diag_t *d = mbl_diag_last();
+
     vga_fill(12, 20, ' ', 40, 0x0Fu);
     vga_write(12, 20, msg, 0x0Fu);
+    if (d != NULL) {
+        mbl_diag_format(diagbuf, d->code);
+        vga_fill(13, 20, ' ', 40, 0x07u);
+        vga_write(13, 20, "BANcode ", 0x07u);
+        vga_write(13, 28, diagbuf, 0x07u);
+    }
     for (;;) {
         __asm__ volatile ("hlt");
+    }
+}
+
+/* Volume-probe failure screen: distinguishes the recoverable soft
+ * faults (no volume / USFS media / encrypted volume / future version)
+ * from fatal storage corruption, mirroring the BANcode severity. */
+static void probe_failed(bancode_t rc) {
+    char diagbuf[48];
+
+    vga_fill(10, 20, ' ', 44, 0x0Fu);
+    if (mbl_code_is_soft(rc)) {
+        vga_write(10, 20, "No bootable OWFS volume.", 0x0Fu);
+    } else {
+        vga_write(10, 20, "OWFS volume unusable.", 0x0Fu);
+    }
+    mbl_diag_format(diagbuf, rc);
+    vga_fill(11, 20, ' ', 44, 0x07u);
+    vga_write(11, 20, diagbuf, 0x07u);
+    vga_fill(12, 20, ' ', 44, 0x07u);
+    vga_write(12, 20, "Press Esc to reboot.", 0x07u);
+    for (;;) {
+        int k = kbd_poll();
+        if (k == MBL_KEY_ESC || k == MBL_KEY_REBOOT) {
+            kbd_reboot();
+        }
     }
 }
 
@@ -28,22 +62,15 @@ void kmain(void) {
     int count;
     int sel;
     uint32_t size = 0;
+    bancode_t rc;
 
     /* Initialize the GOP framebuffer renderer */
     vga_init_gop();
     vga_clear();
 
-    if (owfs_probe(0) != 0) {
-        vga_fill(10, 20, ' ', 40, 0x0Fu);
-        vga_write(10, 20, "No OWFS volume found.", 0x0Fu);
-        vga_fill(11, 20, ' ', 40, 0x0Fu);
-        vga_write(11, 20, "Press Esc to reboot.", 0x07u);
-        for (;;) {
-            int k = kbd_poll();
-            if (k == MBL_KEY_ESC || k == MBL_KEY_REBOOT) {
-                kbd_reboot();
-            }
-        }
+    rc = owfs_probe(0);
+    if (!mbl_code_is_success(rc)) {
+        probe_failed(rc);
     }
 
     count = owfs_enumerate(g_entries, MBL_MENU_MAX);
@@ -71,21 +98,32 @@ void kmain(void) {
     vga_clear();
     vga_write(10, 30, "Loading kernel...", 0x0Fu);
 
-    if (owfs_load_file(g_entries[sel].inode, MBL_KERNEL_ADDR, &size) != 0) {
+    if (owfs_load_file(g_entries[sel].inode, MBL_KERNEL_ADDR, &size)
+            != MBL_COM_KERNEL_LOAD_OK) {
         fail("Kernel load failed!");
     }
     if (size < 16) {
+        mbl_diag_raise(MBL_SOFT_KERNEL_TOO_SMALL);
         fail("Kernel image too small!");
     }
 
     /* publish boot configuration for the kernel */
+    /* (fixed low address 0x510; silence the near-NULL region analyzer) */
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
     {
         mbl_boot_config_t *cfg = (mbl_boot_config_t *)(uintptr_t)MBL_BOOTCONFIG;
         cfg->magic = MBL_MAGIC_BOOTCFG;
         cfg->boot_drive = 0;
         cfg->kernel_size = size;
         sucs_init_boot_config(&cfg->sucs_cfg, SUCS_MODE_BASE);
+        mbl_diag_raise(MBL_COM_BOOT_HANDOFF_OK);
     }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
     vga_write(11, 30, "Booting...", 0x0Fu);
 
