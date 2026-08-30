@@ -2,8 +2,8 @@
  * OpenWindows Kernel Mode-Switching Subsystem
  *
  * Implements kernel transitions between Base SUCS (31-bit character encoding &
- * SUTF-8/16/4/2 text formatting transports) and ExtSUCS (unbounded character encoding
- * & extSUTF text formatting transports).
+ * Base SUTF transformation formats) and ExtSUCS (unbounded character encoding &
+ * extSUTF transformation format vSUTF + SUST serialization transports).
  *
  * Mode alterations require a system restart. Mode switches are staged as pending
  * and committed during early kernel boot initialization.

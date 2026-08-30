@@ -8,10 +8,16 @@ extern "C" {
 #endif
 
 /**
- * SUTF-8 Text Formatting and Serialization Transport
+ * SUTF-8 Transformation Format
  *
- * SUTF-8 defines the physical byte-packing, bit-alignment, and stream framing
- * transport rules for storing and transmitting SUCS codepoints in 1 to 6 bytes.
+ * SUTF-8 defines the endian-neutral mapping between SUCS codepoints and
+ * 1 to 6 byte sequences. Physical byte packing and stream framing rules
+ * for serialized streams are defined by the SUST layer (see <sust.h>);
+ * this header is strictly the transformation.
+ *
+ * Note: in this codebase byte-level validation of SUTF-8 is provided via
+ * sutf8_encode_char/sutf8_decode_char — the byte array IS the symbol
+ * sequence (SUTF-8 has no word-order ambiguity to normalize).
  */
 
 /* Inline helper for SUTF-8 transport stream length calculation */

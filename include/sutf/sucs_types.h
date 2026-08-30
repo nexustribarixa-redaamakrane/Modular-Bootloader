@@ -11,10 +11,14 @@
  * SUCS (SuperUnicode) is strictly a CHARACTER ENCODING defining the abstract
  * 31-bit codepoint numerical address space (0x00000000 to 0x7FFFFFFF).
  *
- * For the unbounded (0 -> infinity) ExtSUCS Character Encoding and extended
- * extSUTF Text Formatting Transports (SUTF-32/64/128/256/512/N, vSUTF, e-SUTF),
- * see <extsucs_types.h>, <extsutf_fixed.h>, <vsutf.h>, and <esutf.h> in
- * superunicode_extended.
+ * For the unbounded (0 -> infinity) ExtSUCS Character Encoding and the
+ * extended transformation format vSUTF, see <extsucs_types.h> and
+ * <vsutf.h> in superunicode_extended.
+ *
+ * SUTF is strictly a transformation format (endian-neutral codepoint <->
+ * symbol-sequence mapping). Physical byte serialization, bit-packing, and
+ * stream framing are defined by the SUST (SuperUnicode Serialization
+ * Transports) library — see <sust.h> (SUST-16/32/64/128/256/512/N, e-SUST).
  */
 /* Guarded so the identical typedef can safely coexist with superunicode/
  * sucs_types.h and extsucs_types.h in a single translation unit. */
@@ -63,7 +67,7 @@ static inline bool sucs_is_valid(sucs_char_t cp) {
 #endif
 
 /* ============================================================================
- * ExtSUCS Character Encoding & extSUTF Transport Forwarding References
+ * ExtSUCS Character Encoding & Transformation Format Forwarding References
  * ============================================================================ */
 #if defined(__has_include)
   #if __has_include("extsucs_types.h")

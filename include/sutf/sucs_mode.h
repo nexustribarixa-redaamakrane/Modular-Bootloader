@@ -6,9 +6,10 @@
  *
  * Controls kernel transitions between:
  * 1. Base Mode (SUCS_MODE_BASE): 31-bit Base SUCS Character Encoding &
- *    Base SUTF Text Formatting Transports (SUTF-8, SUTF-16, SUTF-4, SUTF-2).
+ *    Base SUTF Transformation Formats (SUTF-8, SUTF-16, SUTF-4, SUTF-2).
  * 2. Extended Mode (SUCS_MODE_EXTENDED): Unbounded ExtSUCS Character Encoding &
- *    extSUTF Text Formatting Transports (SUTF-32/64/128/256/512/N, vSUTF, e-SUTF).
+ *    extSUTF Transformation Formats (vSUTF) and SUST serialization transports
+ *    (SUST-32/64/128/256/512/N, e-SUST).
  *
  * Any alteration between Base and Extended mode requires a mandatory system
  * restart. Mode changes are staged as 'pending' and committed during early
@@ -23,10 +24,10 @@
 extern "C" {
 #endif
 
-/* SuperUnicode Kernel Encoding & Transport Operating Modes */
+/* SuperUnicode Kernel Encoding & Transformation Operating Modes */
 typedef enum {
     SUCS_MODE_BASE     = 0,  /* Base SUCS (31-bit) & Base SUTF (SUTF-8/16/4/2) */
-    SUCS_MODE_EXTENDED = 1   /* ExtSUCS (Unbounded 64-bit) & extSUTF (SUTF-32/64/128/256/512/N, vSUTF, e-SUTF) */
+    SUCS_MODE_EXTENDED = 1   /* ExtSUCS (Unbounded 64-bit) & vSUTF + SUST transports */
 } sucs_kernel_mode_t;
 
 /* Kernel Mode Switch Status & Return Codes */
@@ -39,19 +40,19 @@ typedef enum {
 
 /* Kernel Boot Configuration Control Block */
 typedef struct {
-    sucs_kernel_mode_t active_mode;        /* Currently active kernel character encoding & transport mode */
+    sucs_kernel_mode_t active_mode;        /* Currently active kernel encoding & transformation mode */
     sucs_kernel_mode_t pending_mode;       /* Staged mode to apply on next system restart */
     bool               reboot_required;    /* System reboot required flag */
     uint32_t           mode_change_count;  /* Total committed mode alterations */
 } sucs_kernel_boot_config_t;
 
 /**
- * Returns the currently active kernel character encoding & transport mode.
+ * Returns the currently active kernel encoding & transformation mode.
  */
 sucs_kernel_mode_t sucs_get_active_mode(void);
 
 /**
- * Returns the pending kernel character encoding & transport mode.
+ * Returns the pending kernel encoding & transformation mode.
  */
 sucs_kernel_mode_t sucs_get_pending_mode(void);
 
