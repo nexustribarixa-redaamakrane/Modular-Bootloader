@@ -281,6 +281,18 @@ static void test_bancode_integration(void) {
     CHECK(BANCODE_BANCODE_START == VIP_BANCODE_BLOCK_START);
     CHECK(BANCODE_SOFTCODE_END == VIP_SOFTCODE_BLOCK_END);
 
+    /* BANcode v1.1.0 operating modes: the boot path runs System mode
+     * (fatal BANcodes dispatch through Kernel Security Traps, the krnl
+     * path); App mode is the application-crash-handler path. These are
+     * compile-time checks only - this TU links the upstream header but
+     * not libbancode, so the runtime mode getters are not callable here. */
+    CHECK(BANCODE_MODE_SYSTEM == 0);
+    CHECK(BANCODE_MODE_APP == 1);
+#ifndef BANCODE_DEFAULT_MODE
+#error BANCODE_DEFAULT_MODE must be provided by the upstream master header
+#endif
+    CHECK(BANCODE_DEFAULT_MODE == BANCODE_MODE_SYSTEM);
+
     /* Every MBL provisional code sits inside its intended block.
      * Direct range comparisons: the upstream master header does not
      * ship W+/C+/S+ classifier helpers. */
