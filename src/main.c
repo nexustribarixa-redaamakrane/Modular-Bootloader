@@ -6,6 +6,10 @@
  * MBL_KERNEL_ADDR -> jump to it with a boot configuration block.
  *
  * UEFI version: GOP framebuffer for display, UEFI runtime services for time.
+ * The UEFI firmware enters this bootloader in 64-bit long mode, and the
+ * OpenWindows kernel is also a 64-bit freestanding kernel. We therefore
+ * keep long mode active through ExitBootServices and perform a native
+ * 64-bit SysV-style handoff.
  */
 
 #include "efi.h"
@@ -129,8 +133,9 @@ void kmain(void) {
 
     {
         /* Exit UEFI boot services before jumping to the kernel.
-         * The kernel is a bare-metal 32-bit program that uses VGA text.
-         * After ExitBootServices, only the memory map is valid. */
+         * UEFI x86-64 enters us in long mode, and ExitBootServices does not
+         * switch the processor back to 32-bit mode. Keep the existing 64-bit
+         * execution environment and pass the boot config in RDI. */
         EFI_STATUS status;
         UINTN mem_map_size = 0;
         EFI_MEMORY_DESCRIPTOR *mem_map = NULL;
@@ -159,25 +164,28 @@ void kmain(void) {
             }
         }
 
-        /* After ExitBootServices: no UEFI services available.
-         * Jump to the kernel. The kernel is a 32-bit bare-metal program
-         * loaded at MBL_KERNEL_ADDR. */
+        /* After ExitBootServices: no UEFI services are available.
+         * Jump to the 64-bit kernel while remaining in long mode. The
+         * kernel is loaded at MBL_KERNEL_ADDR and receives cfg in RDI.
+         *
+         * RSP is deliberately initialized to a known 16-byte-aligned stack
+         * before CALL, as required by the x86-64 SysV ABI. We do not touch
+         * CS/DS/ES/SS: changing them here as if we were entering 32-bit mode
+         * would corrupt the native 64-bit UEFI execution environment. */
         {
             void (*kernel)(mbl_boot_config_t *);
             mbl_boot_config_t *cfg = (mbl_boot_config_t *)(uintptr_t)MBL_BOOTCONFIG;
             kernel = (void (*)(mbl_boot_config_t *))(void *)(uintptr_t)MBL_KERNEL_ADDR;
 
-            /* Set up segments for 32-bit mode */
             __asm__ volatile (
-                "mov $0x10, %%ax\n"
-                "mov %%ax, %%ds\n"
-                "mov %%ax, %%es\n"
-                "mov %%ax, %%ss\n"
-                "mov $0x180000, %%esp\n"
+                "mov %[stack], %%rsp\n"
+                "and $-16, %%rsp\n"
                 "call *%[kern]\n"
                 :
-                : [kern] "r" (kernel), "D" (cfg)
-                : "eax", "memory"
+                : [kern] "r" (kernel),
+                  [stack] "r" ((uintptr_t)0x0000000000180000ULL),
+                  "D" (cfg)
+                : "memory"
             );
         }
     }
