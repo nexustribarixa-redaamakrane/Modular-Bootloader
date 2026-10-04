@@ -18,6 +18,7 @@ Uses only stdlib (no external dependencies) + owfs_mkfs.py for formatting.
 """
 
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -318,7 +319,9 @@ def main():
     subprocess.run([sys.executable, os.path.join(TOOLS, "build_efi.py")], check=True)
 
     # 2. Assemble the test kernel (32-bit flat binary for the kernel payload)
-    nasm = os.environ.get("MBL_NASM", r"C:\Program Files\NASM\nasm.exe")
+    nasm = os.environ.get("MBL_NASM") or shutil.which("nasm")
+    if not nasm:
+        raise SystemExit("NASM not found; set MBL_NASM or add nasm to PATH")
     subprocess.run([nasm, "-f", "bin",
                     os.path.join(ROOT, "boot", "test_kernel.asm"),
                     "-o", os.path.join(BUILD, "test_kernel.bin")], check=True)

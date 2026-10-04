@@ -1,7 +1,7 @@
 # PERSISTENT MEMORY ARTIFACT: MODULAR BOOTLOADER (MBL) & SUPERUNICODE ARCHITECTURE
 
 > **SYSTEM ARCHITECTURE & STATE TRACKER**
-> **Workspace:** `C:\Users\KARIMABENDA\Documents\Modular-Bootloader`
+> **Workspace:** the Git root reported by `git rev-parse --show-toplevel`.
 > **Project:** Modular Bootloader (`MBL`) — 64-bit UEFI bootloader with GOP framebuffer text rendering and OpenWindows File System (`OWFS`) driver for the OpenWindows Operating System Kernel (`OpenWindows-Kernel`).
 
 ---
@@ -30,11 +30,11 @@
 
 ## 2. Toolchain
 
-| Tool | Path | Version | Purpose |
+| Tool | Discovery / override | Version | Purpose |
 | :--- | :--- | :--- | :--- |
-| MinGW-w64 GCC | `C:\w64devkit\bin\x86_64-w64-mingw32-gcc.exe` | w64devkit x86_64 | Compiles freestanding UEFI PE/COFF modules (Windows x64 ABI / `ms_abi`) |
-| NASM | `C:\Program Files\NASM\nasm.exe` | Latest | Assembles 32-bit test kernel (`boot/test_kernel.asm`) |
-| QEMU | `C:\Program Files\qemu\qemu-system-x86_64.exe` | Latest | Emulates x86_64 UEFI machine with OVMF firmware |
+| MinGW-w64 GCC | `MBL_GCC` or `x86_64-w64-mingw32-gcc` / `gcc` on `PATH` | w64devkit x86_64 or compatible | Compiles freestanding UEFI PE/COFF modules (Windows x64 ABI / `ms_abi`) |
+| NASM | `MBL_NASM` or `nasm` on `PATH` | Latest | Assembles 32-bit test kernel (`boot/test_kernel.asm`) |
+| QEMU | `MBL_QEMU` or `qemu-system-x86_64` on `PATH` | Latest | Emulates x86_64 UEFI machine with OVMF firmware |
 | OVMF Firmware | `OVMF.fd` (project root) | EDK II OVMF | UEFI x86_64 firmware for QEMU testing |
 | Python | System Python 3.14 | 3.14+ | Build scripts and automated testing |
 

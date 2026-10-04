@@ -35,7 +35,6 @@ PARENT = os.path.dirname(ROOT)
 
 GCC_CANDIDATES = [
     os.environ.get("MBL_HOST_GCC", ""),
-    r"C:\w64devkit\bin\gcc.exe",
     "gcc",
 ]
 

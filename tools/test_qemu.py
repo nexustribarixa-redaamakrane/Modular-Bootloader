@@ -19,6 +19,7 @@ Usage:
 import argparse
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -27,7 +28,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 IMAGE = os.path.join(ROOT, "mbl_test.img")
-QEMU = os.environ.get("MBL_QEMU", r"C:\Program Files\qemu\qemu-system-x86_64.exe")
+QEMU = os.environ.get("MBL_QEMU") or shutil.which("qemu-system-x86_64")
 OVMF = os.environ.get("MBL_OVMF", os.path.join(ROOT, "OVMF.fd"))
 MON_PORT = int(os.environ.get("MBL_MON_PORT", "4444"))
 
@@ -146,6 +147,9 @@ def main():
     ap.add_argument("--wait", type=float, default=8.0,
                     help="seconds to wait for the UEFI menu before probing")
     args = ap.parse_args()
+
+    if not QEMU:
+        raise SystemExit("QEMU not found; set MBL_QEMU or add qemu-system-x86_64 to PATH")
 
     if not args.no_build:
         subprocess.run([sys.executable, os.path.join(TOOLS, "build_image.py")],

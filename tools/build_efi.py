@@ -14,6 +14,7 @@ Pipeline:
 """
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -24,10 +25,11 @@ SRC = os.path.join(ROOT, "src")
 INCLUDE = os.path.join(ROOT, "include")
 
 # Use mingw-w64 gcc for PE/COFF output (targets Windows ABI = ms_abi)
-GCC = os.environ.get(
-    "MBL_GCC",
-    r"C:\w64devkit\bin\x86_64-w64-mingw32-gcc.exe"
-)
+GCC = (os.environ.get("MBL_GCC")
+       or shutil.which("x86_64-w64-mingw32-gcc")
+       or shutil.which("gcc"))
+if not GCC:
+    raise SystemExit("GCC not found; set MBL_GCC or add gcc to PATH")
 
 CFLAGS = [
     "-m64", "-c",
@@ -65,10 +67,11 @@ SRCS = [
     "sutf/sucs_mode.c",
 ]
 
-AR = os.environ.get(
-    "MBL_AR",
-    r"C:\w64devkit\bin\x86_64-w64-mingw32-ar.exe"
-)
+AR = (os.environ.get("MBL_AR")
+      or shutil.which("x86_64-w64-mingw32-ar")
+      or shutil.which("ar"))
+if not AR:
+    raise SystemExit("ar not found; set MBL_AR or add ar to PATH")
 
 EFI_OUT = os.path.join(BUILD, "BOOTX64.EFI")
 LIB_OUT = os.path.join(BUILD, "libmbl.a")
